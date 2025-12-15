@@ -205,4 +205,3 @@ END;
 **Malek Mohammed Al-Edresi**  
 Oracle APEX & Database Integration Specialist
 
-# apex-jasper-pdf-integration
