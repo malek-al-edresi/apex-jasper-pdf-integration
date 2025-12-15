@@ -203,5 +203,4 @@ END;
 
 ## 👤 Author
 **Malek Mohammed Al-Edresi**  
-Oracle APEX & Database Integration Specialist
-
+Oracle Software Engineer - OCP & OCA - Oracle APEX Developer Professional 
