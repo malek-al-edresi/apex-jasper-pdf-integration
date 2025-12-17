@@ -72,8 +72,7 @@ CREATE OR REPLACE PROCEDURE GET_REPORT (
     l_report_params VARCHAR2(1000);
     l_username VARCHAR2(100);
     l_password VARCHAR2(100);
-    l_base64_auth VARCHAR2(200);
-    l_response CLOB;
+    l_response_clob CLOB;
     l_pdf_blob BLOB;
     l_http_status NUMBER;
     l_param_list APEX_T_VARCHAR2;
@@ -137,33 +136,37 @@ BEGIN
     l_username := l_report_settings.username;
     l_password := l_report_settings.password;
     
-    -- Make REST call to JasperReports server
+    -- Clear previous headers and set content type
     APEX_WEB_SERVICE.G_REQUEST_HEADERS.DELETE;
-    APEX_WEB_SERVICE.SET_REQUEST_HEADER('Content-Type', 'application/pdf');
+    APEX_WEB_SERVICE.SET_REQUEST_HEADER('Accept', 'application/pdf');
     
-    -- Add basic authentication header
-    l_base64_auth := UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.BASE64_ENCODE(UTL_RAW.CAST_TO_RAW(l_username || ':' || l_password)));
-    APEX_WEB_SERVICE.SET_REQUEST_HEADER('Authorization', 'Basic ' || l_base64_auth);
-    
-    -- Call the JasperReports REST endpoint
-    l_response := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
+    -- Make REST call to JasperReports server with Basic Authentication
+    l_response_clob := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
         p_url => l_rest_url,
-        p_http_method => 'GET'
+        p_http_method => 'GET',
+        p_username => l_username,
+        p_password => l_password,
+        p_transfer_timeout => 300
     );
     
     l_http_status := APEX_WEB_SERVICE.GET_LAST_HTTP_STATUS_CODE;
     
-    IF l_http_status = 200 THEN
+    IF l_http_status = 200 AND l_response_clob IS NOT NULL THEN
         -- Convert response to BLOB
         l_pdf_blob := APEX_WEB_SERVICE.GET_BLOB_RESPONSE;
         
-        -- Stream PDF to browser
-        OWA_UTIL.MIME_HEADER('application/pdf', FALSE);
-        HTP.P('Content-Length: ' || DBMS_LOB.GETLENGTH(l_pdf_blob));
-        HTP.P('Content-Disposition: attachment; filename="' || l_report_config.report_name || '.pdf"');
-        OWA_UTIL.HTTP_HEADER_CLOSE;
-        
-        WPG_DOCLOAD.DOWNLOAD_FILE(l_pdf_blob);
+        -- Stream PDF to browser only if content is valid
+        IF l_pdf_blob IS NOT NULL AND DBMS_LOB.GETLENGTH(l_pdf_blob) > 100 THEN
+            OWA_UTIL.MIME_HEADER('application/pdf', FALSE);
+            HTP.P('Content-Length: ' || DBMS_LOB.GETLENGTH(l_pdf_blob));
+            HTP.P('Content-Disposition: inline; filename="' || l_report_config.report_name || '.pdf"');
+            OWA_UTIL.HTTP_HEADER_CLOSE;
+            
+            WPG_DOCLOAD.DOWNLOAD_FILE(l_pdf_blob);
+            APEX_APPLICATION.STOP_APEX_ENGINE;
+        ELSE
+            RAISE_APPLICATION_ERROR(-20001, 'Received invalid or empty PDF response from JasperReports server');
+        END IF;
     ELSE
         RAISE_APPLICATION_ERROR(-20001, 'Error calling JasperReports server. HTTP Status: ' || l_http_status || '. URL: ' || l_rest_url);
     END IF;
@@ -171,6 +174,8 @@ BEGIN
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20002, 'Report configuration not found or inactive.');
+    WHEN TOO_MANY_ROWS THEN
+        RAISE_APPLICATION_ERROR(-20004, 'Multiple configurations found. Check unique constraints.');
     WHEN OTHERS THEN
         RAISE_APPLICATION_ERROR(-20003, 'Error in GET_REPORT procedure: ' || SQLERRM);
 END GET_REPORT;
@@ -194,13 +199,35 @@ END;
 - Use Oracle Wallet for sensitive authentication data
 - Implement proper access controls on the procedure
 - Validate input parameters to prevent injection attacks
+- Consider using SSL/TLS for all communications
 
 ## 🛠 Troubleshooting
 - Ensure JasperReports server is accessible from Oracle database
 - Verify correct authentication credentials
 - Check network connectivity between systems
 - Review APEX_WEB_SERVICE package permissions
+- Confirm firewall rules allow outbound connections
+- Validate REST API endpoint format on JasperReports server
+
+## 📋 Prerequisites
+- Oracle APEX 20.1 or higher
+- Oracle Database with APEX_WEB_SERVICE package
+- Access to JasperReports Server with REST API enabled
+- Network connectivity between Oracle DB and JasperReports server
+- Proper ACL configuration for external HTTP calls
+
+## 🚀 Deployment Steps
+1. Execute DDL scripts to create tables
+2. Populate configuration tables with server details
+3. Deploy the stored procedure
+4. Test with sample report ID
+5. Configure in APEX application as required
 
 ## 👤 Author
 **Malek Mohammed Al-Edresi**  
-Oracle Software Engineer - OCP & OCA - Oracle APEX Developer Professional 
+Oracle Software Engineer - OCP & OCA - Oracle APEX Developer Professional
+
+*Specialized in Oracle APEX, PL/SQL, Database Architecture, and Enterprise Integration Solutions*
+
+LinkedIn: [Malek_Al_Edresi](https://linkedin.com/in/Malek_Al_Edresi)  
+GitHub: [malek-al-edresi](https://github.com/malek-al-edresi)
