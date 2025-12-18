@@ -11,7 +11,7 @@ A production-ready integration solution that enables Oracle APEX applications to
 | **Dynamic Integration** | REST-based communication with JasperReports Server |
 | **Parameter Support** | Runtime parameter override with fallback to defaults |
 | **Centralized Configuration** | Database-driven server and report settings |
-| **Secure Authentication** | Basic Auth with encrypted credential storage |
+| **Secure Authentication** | Basic Auth with credential storage |
 | **Direct PDF Streaming** | BLOB-to-browser delivery without intermediate files |
 | **APEX Compatibility** | Designed for Oracle APEX and ORDS environments |
 | **Comprehensive Error Handling** | Detailed diagnostics and status reporting |
@@ -49,9 +49,6 @@ CREATE TABLE MANG_SYS_SEC_REPORT_SETTINGS (
     updated_date       DATE DEFAULT SYSDATE,
     CONSTRAINT chk_active CHECK (is_active IN ('Y', 'N'))
 );
-
--- Optional: Add encryption for password column
--- Consider using Oracle Wallet or Transparent Data Encryption
 ```
 
 ### **Report Configuration Table** (`MANG_SYS_SEC_REPORT_CONFIG`)
@@ -71,10 +68,6 @@ CREATE TABLE MANG_SYS_SEC_REPORT_CONFIG (
       REFERENCES MANG_SYS_SEC_REPORT_SETTINGS(settings_id),
     CONSTRAINT chk_active_config CHECK (is_active IN ('Y', 'N'))
 );
-
--- Index for performance
-CREATE INDEX idx_report_config_active 
-  ON MANG_SYS_SEC_REPORT_CONFIG(is_active, report_id);
 ```
 
 ## ⚙️ Core Implementation
@@ -83,152 +76,108 @@ CREATE INDEX idx_report_config_active
 
 ```sql
 CREATE OR REPLACE PROCEDURE GET_REPORT (
-    p_report_id     IN NUMBER,
-    p_settings_id   IN NUMBER DEFAULT NULL,
-    p_param_value   IN VARCHAR2 DEFAULT NULL
-) 
-AUTHID CURRENT_USER
-AS
-    -- Variable declarations
-    l_report_config   MANG_SYS_SEC_REPORT_CONFIG%ROWTYPE;
-    l_report_settings MANG_SYS_SEC_REPORT_SETTINGS%ROWTYPE;
-    l_rest_url        VARCHAR2(2000);
-    l_report_params   VARCHAR2(1000);
-    l_username        VARCHAR2(100);
-    l_password        VARCHAR2(100);
-    l_response_clob   CLOB;
-    l_pdf_blob        BLOB;
-    l_http_status     NUMBER;
-    l_param_list      APEX_T_VARCHAR2;
-    l_query_string    VARCHAR2(1000) := '';
-    l_use_settings_id NUMBER;
-    i                 PLS_INTEGER;
+    p_report_id      IN NUMBER,
+    p_settings_id    IN NUMBER,
+    p_param_value    IN VARCHAR2 DEFAULT NULL
+) IS
+    v_blob BLOB;
+    v_file_name VARCHAR2(200);
+    v_jasper_server_url VARCHAR2(500);
+    v_username VARCHAR2(100);
+    v_password VARCHAR2(100);
+    v_report_path VARCHAR2(500);
+    v_param_values_tab APEX_T_VARCHAR2;
+    v_report_url VARCHAR2(2000);
+    v_final_params VARCHAR2(1000);
+    v_is_active CHAR(1);
+    
+    -- Exception declarations
+    ex_invalid_report EXCEPTION;
+    ex_invalid_settings EXCEPTION;
+    ex_empty_response EXCEPTION;
+    
 BEGIN
-    -- 1. Retrieve and validate report configuration
+    -- Validate input parameters
+    IF p_report_id IS NULL OR p_settings_id IS NULL THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Report ID and Settings ID cannot be null');
+    END IF;
+
+    -- Get report configuration
     BEGIN
-        SELECT *
-        INTO l_report_config
+        SELECT report_path, report_name, default_params, is_active
+        INTO v_report_path, v_file_name, v_final_params, v_is_active
         FROM MANG_SYS_SEC_REPORT_CONFIG
-        WHERE report_id = p_report_id
-          AND is_active = 'Y';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20002, 
-                'Report configuration not found or inactive for ID: ' || p_report_id);
-    END;
-    
-    -- 2. Determine which server settings to use
-    l_use_settings_id := NVL(p_settings_id, l_report_config.settings_id);
-    
-    BEGIN
-        SELECT *
-        INTO l_report_settings
-        FROM MANG_SYS_SEC_REPORT_SETTINGS
-        WHERE settings_id = l_use_settings_id
-          AND is_active = 'Y';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20003, 
-                'Server settings not found or inactive for ID: ' || l_use_settings_id);
-    END;
-    
-    -- 3. Process report parameters
-    l_report_params := NVL(p_param_value, l_report_config.default_params);
-    
-    IF l_report_params IS NOT NULL THEN
-        l_param_list := APEX_STRING.SPLIT(l_report_params, ';');
+        WHERE report_id = p_report_id;
         
-        FOR i IN 1..l_param_list.COUNT LOOP
-            IF i > 1 THEN
-                l_query_string := l_query_string || '&';
-            END IF;
-            
-            -- Handle both "key=value" and "value-only" formats
-            IF INSTR(l_param_list(i), '=') > 0 THEN
-                l_query_string := l_query_string || l_param_list(i);
-            ELSE
-                l_query_string := l_query_string || 'p' || i || '=' || 
-                                 UTL_URL.ESCAPE(l_param_list(i), TRUE, 'UTF-8');
-            END IF;
-        END LOOP;
-    END IF;
-    
-    -- 4. Construct REST API endpoint URL
-    l_rest_url := RTRIM(l_report_settings.jasper_server_url, '/') || 
-                  '/rest_v2/reports' || 
-                  l_report_config.report_path || 
-                  '.pdf';
-                  
-    IF l_query_string IS NOT NULL THEN
-        l_rest_url := l_rest_url || '?' || l_query_string;
-    END IF;
-    
-    -- 5. Prepare authentication
-    l_username := l_report_settings.username;
-    l_password := l_report_settings.password;
-    
-    -- 6. Configure HTTP request headers
-    APEX_WEB_SERVICE.G_REQUEST_HEADERS.DELETE;
-    APEX_WEB_SERVICE.SET_REQUEST_HEADER('Accept', 'application/pdf');
-    
-    -- 7. Execute REST call to JasperReports Server
-    BEGIN
-        l_response_clob := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
-            p_url               => l_rest_url,
-            p_http_method       => 'GET',
-            p_username          => l_username,
-            p_password          => l_password,
-            p_transfer_timeout  => 300,
-            p_wallet_path       => 'file:/path/to/wallet'  -- Optional: for SSL
-        );
-        
-        l_http_status := APEX_WEB_SERVICE.GET_LAST_HTTP_STATUS_CODE;
-        
-    EXCEPTION
-        WHEN OTHERS THEN
-            RAISE_APPLICATION_ERROR(-20004, 
-                'HTTP request failed: ' || SQLERRM || 
-                '. URL: ' || SUBSTR(l_rest_url, 1, 500));
-    END;
-    
-    -- 8. Process successful response
-    IF l_http_status = 200 AND l_response_clob IS NOT NULL THEN
-        l_pdf_blob := APEX_WEB_SERVICE.GET_BLOB_RESPONSE;
-        
-        IF l_pdf_blob IS NOT NULL AND DBMS_LOB.GETLENGTH(l_pdf_blob) > 100 THEN
-            -- 9. Stream PDF to browser
-            OWA_UTIL.MIME_HEADER('application/pdf', FALSE);
-            HTP.P('Content-Length: ' || DBMS_LOB.GETLENGTH(l_pdf_blob));
-            HTP.P('Content-Disposition: attachment; filename="' || 
-                  l_report_config.report_name || '_' || 
-                  TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS') || '.pdf"');
-            OWA_UTIL.HTTP_HEADER_CLOSE;
-            
-            WPG_DOCLOAD.DOWNLOAD_FILE(l_pdf_blob);
-            APEX_APPLICATION.STOP_APEX_ENGINE;
-        ELSE
-            RAISE_APPLICATION_ERROR(-20005, 
-                'Invalid or empty PDF received from JasperReports server');
+        IF v_is_active = 'N' THEN
+            RAISE_APPLICATION_ERROR(-20002, 'Report configuration is inactive');
         END IF;
-    ELSE
-        -- 10. Handle HTTP errors
-        RAISE_APPLICATION_ERROR(-20006, 
-            'JasperReports server returned HTTP ' || l_http_status || 
-            '. URL: ' || SUBSTR(l_rest_url, 1, 500));
-    END IF;
-    
-EXCEPTION
-    WHEN TOO_MANY_ROWS THEN
-        RAISE_APPLICATION_ERROR(-20007, 
-            'Multiple active configurations found. Verify data integrity.');
-    WHEN OTHERS THEN
-        -- Log error details for debugging
-        INSERT INTO error_log (error_time, error_message, report_id)
-        VALUES (SYSDATE, SQLERRM, p_report_id);
-        COMMIT;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE ex_invalid_report;
+    END;
+
+    -- Get server settings
+    BEGIN
+        SELECT jasper_server_url, username, password, is_active
+        INTO v_jasper_server_url, v_username, v_password, v_is_active
+        FROM MANG_SYS_SEC_REPORT_SETTINGS
+        WHERE settings_id = p_settings_id;
         
-        RAISE_APPLICATION_ERROR(-20008, 
-            'Report generation failed: ' || SQLERRM);
+        IF v_is_active = 'N' THEN
+            RAISE_APPLICATION_ERROR(-20003, 'Server settings are inactive');
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE ex_invalid_settings;
+    END;
+
+    -- Process parameters
+    IF p_param_value IS NOT NULL THEN
+        v_param_values_tab := APEX_STRING.SPLIT(p_param_value, ';');
+    ELSIF v_final_params IS NOT NULL THEN
+        v_param_values_tab := APEX_STRING.SPLIT(v_final_params, ';');
+    END IF;
+
+    -- Construct report URL
+    v_report_url := RTRIM(v_jasper_server_url, '/') || '/' || LTRIM(v_report_path, '/');
+    
+    -- Add file extension if missing
+    IF SUBSTR(v_file_name, -4) != '.pdf' THEN
+        v_file_name := v_file_name || '.pdf';
+    END IF;
+
+    -- Make REST request to JasperReports server
+    v_blob := APEX_WEB_SERVICE.MAKE_REST_REQUEST_B(
+        p_url => v_report_url,
+        p_http_method => 'GET',
+        p_username => v_username,
+        p_password => v_password,
+        p_transfer_timeout => 300
+    );
+
+    -- Validate response
+    IF v_blob IS NULL OR DBMS_LOB.GETLENGTH(v_blob) < 100 THEN
+        RAISE ex_empty_response;
+    END IF;
+
+    -- Set HTTP headers and return PDF
+    OWA_UTIL.MIME_HEADER('application/pdf', FALSE);
+    HTP.P('Content-Length: ' || DBMS_LOB.GETLENGTH(v_blob));
+    HTP.P('Content-Disposition: inline; filename="' || v_file_name || '"');
+    OWA_UTIL.HTTP_HEADER_CLOSE;
+    WPG_DOCLOAD.DOWNLOAD_FILE(v_blob);
+    APEX_APPLICATION.STOP_APEX_ENGINE;
+
+EXCEPTION
+    WHEN ex_invalid_report THEN
+        HTP.P('Error: Invalid report ID specified');
+    WHEN ex_invalid_settings THEN
+        HTP.P('Error: Invalid server settings ID specified');
+    WHEN ex_empty_response THEN
+        HTP.P('Error: Received empty response from server');
+    WHEN OTHERS THEN
+        HTP.P('Error: ' || SQLERRM);
 END GET_REPORT;
 /
 ```
@@ -239,7 +188,7 @@ END GET_REPORT;
 ```sql
 -- Generate report with default parameters
 BEGIN
-    GET_REPORT(p_report_id => 1);
+    GET_REPORT(p_report_id => 1, p_settings_id => 1);
 END;
 /
 
@@ -247,7 +196,8 @@ END;
 BEGIN
     GET_REPORT(
         p_report_id   => 1,
-        p_param_value => 'department_id=1001;start_date=2025-01-01;end_date=2025-12-31'
+        p_settings_id => 1,
+        p_param_value => '1001;2025-01-01;2025-12-31'
     );
 END;
 /
@@ -256,8 +206,7 @@ END;
 BEGIN
     GET_REPORT(
         p_report_id   => 1,
-        p_settings_id => 2,  -- Alternative server
-        p_param_value => '1001;2025'
+        p_settings_id => 2  -- Alternative server
     );
 END;
 /
@@ -271,6 +220,7 @@ Create an Application Process or Page Process:
 BEGIN
     GET_REPORT(
         p_report_id   => :P1_REPORT_ID,
+        p_settings_id => :P1_SETTINGS_ID,
         p_param_value => :P1_PARAMS
     );
 END;
@@ -279,65 +229,48 @@ END;
 ## 🔐 Security Best Practices
 
 ### **Credential Management**
-1. **Encrypt Sensitive Data**: Use Oracle's DBMS_CRYPTO or TDE for password encryption
-2. **Wallet Integration**: Store credentials in Oracle Wallet for enhanced security
-3. **Regular Rotation**: Implement credential rotation policies
+1. **Secure Storage**: Consider using Oracle Wallet or DBMS_CRYPTO for password encryption
+2. **Access Control**: Grant minimal required privileges to the procedure
+3. **Regular Updates**: Implement credential rotation policies
 
 ### **Access Control**
 ```sql
 -- Grant minimal required privileges
 GRANT EXECUTE ON GET_REPORT TO apex_app_user;
 
--- Create a secure view for configuration
+-- Consider creating a secure view
 CREATE OR REPLACE VIEW vw_report_config_secure AS
 SELECT report_id, report_path, report_name, default_params
 FROM MANG_SYS_SEC_REPORT_CONFIG
 WHERE is_active = 'Y';
 ```
 
-### **Input Validation**
-- Sanitize all user inputs
-- Implement parameter whitelisting
-- Validate report IDs against user permissions
-
 ## 📈 Performance Optimization
 
 ### **Indexing Strategy**
 ```sql
--- Add performance indexes
-CREATE INDEX idx_report_config_composite 
-  ON MANG_SYS_SEC_REPORT_CONFIG(settings_id, is_active);
-
-CREATE INDEX idx_report_settings_active 
-  ON MANG_SYS_SEC_REPORT_SETTINGS(is_active, settings_id);
-```
-
-### **Caching Implementation**
-```sql
--- Optional: Add caching table for frequent reports
-CREATE TABLE report_cache (
-    cache_key VARCHAR2(500) PRIMARY KEY,
-    pdf_content BLOB,
-    created_date DATE DEFAULT SYSDATE,
-    expiry_date DATE
-);
+-- Add performance indexes (already included in script)
+CREATE INDEX idx_report_config_settings ON MANG_SYS_SEC_REPORT_CONFIG(settings_id);
+CREATE INDEX idx_report_config_active ON MANG_SYS_SEC_REPORT_CONFIG(is_active);
+CREATE INDEX idx_report_settings_active ON MANG_SYS_SEC_REPORT_SETTINGS(is_active);
 ```
 
 ## 🔧 Troubleshooting Guide
 
 | Issue | Solution |
 |-------|----------|
-| **HTTP 401 Unauthorized** | Verify credentials in settings table; check JasperReports server access |
-| **HTTP 404 Not Found** | Validate report path and server URL configuration |
-| **Empty PDF response** | Check report parameters and JasperReports server logs |
-| **Timeout errors** | Increase `p_transfer_timeout`; verify network connectivity |
-| **Encoding issues** | Ensure proper URL encoding for parameters with special characters |
-| **ACL restrictions** | Configure network ACLs for database server |
+| **ORA-20001: Report ID and Settings ID cannot be null** | Provide both required parameters |
+| **ORA-20002: Report configuration is inactive** | Check `is_active` flag in report config |
+| **ORA-20003: Server settings are inactive** | Check `is_active` flag in server settings |
+| **Empty PDF response** | Verify JasperReports server URL and report path |
+| **Timeout errors** | Increase `p_transfer_timeout` parameter |
+| **Authentication errors** | Verify username/password in settings table |
 
 ### **Diagnostic Queries**
 ```sql
 -- Check active configurations
-SELECT c.report_id, c.report_name, s.jasper_server_url
+SELECT c.report_id, c.report_name, c.report_path,
+       s.jasper_server_url, s.settings_id
 FROM MANG_SYS_SEC_REPORT_CONFIG c
 JOIN MANG_SYS_SEC_REPORT_SETTINGS s 
   ON c.settings_id = s.settings_id
@@ -345,7 +278,7 @@ WHERE c.is_active = 'Y'
   AND s.is_active = 'Y';
 
 -- Test URL construction
-SELECT s.jasper_server_url || '/rest_v2/reports' || c.report_path || '.pdf' as test_url
+SELECT s.jasper_server_url || '/' || c.report_path as test_url
 FROM MANG_SYS_SEC_REPORT_CONFIG c, MANG_SYS_SEC_REPORT_SETTINGS s
 WHERE c.settings_id = s.settings_id
   AND c.report_id = 1;
@@ -354,45 +287,44 @@ WHERE c.settings_id = s.settings_id
 ## 📋 Deployment Checklist
 
 ### **Pre-Deployment**
-- [ ] Verify Oracle APEX version compatibility (20.1+)
+- [ ] Verify Oracle APEX version compatibility (18.1+)
 - [ ] Confirm network connectivity between Oracle DB and JasperReports Server
 - [ ] Configure necessary ACLs for external HTTP calls
-- [ ] Set up Oracle Wallet if using SSL/TLS (recommended)
+- [ ] Ensure APEX_WEB_SERVICE package is accessible
 
 ### **Database Setup**
 1. Execute table creation scripts
-2. Populate configuration tables with environment-specific settings
-3. Deploy the `GET_REPORT` procedure
-4. Grant execute privileges to APEX application schema
-5. Create necessary indexes for performance
+2. Deploy the `GET_REPORT` procedure
+3. Grant execute privileges to APEX application schema
+4. Insert configuration data
 
 ### **Post-Deployment**
-1. Test with sample report ID
+1. Test with sample report
 2. Validate PDF generation and download
 3. Configure APEX application integration
-4. Set up monitoring and alerting
-5. Document configuration for operational support
+4. Document configuration for operational support
 
 ## 🧪 Testing Strategy
 
-### **Unit Tests**
 ```sql
 -- Test procedure with various scenarios
 DECLARE
     l_report_id NUMBER := 1;
+    l_settings_id NUMBER := 1;
 BEGIN
     -- Test 1: Default parameters
-    GET_REPORT(p_report_id => l_report_id);
+    GET_REPORT(p_report_id => l_report_id, p_settings_id => l_settings_id);
     
     -- Test 2: Custom parameters
     GET_REPORT(
         p_report_id   => l_report_id,
-        p_param_value => 'test_param=value'
+        p_settings_id => l_settings_id,
+        p_param_value => 'test_param1;test_param2'
     );
     
     -- Test 3: Invalid report (should raise error)
     BEGIN
-        GET_REPORT(p_report_id => 9999);
+        GET_REPORT(p_report_id => 9999, p_settings_id => l_settings_id);
         DBMS_OUTPUT.PUT_LINE('ERROR: Should have raised exception');
     EXCEPTION
         WHEN OTHERS THEN
@@ -407,11 +339,9 @@ END;
 ### **Related Documentation**
 - [Oracle APEX Web Service Guide](https://docs.oracle.com/database/apex-20.1/AEAPI/APEX_WEB_SERVICE.htm)
 - [JasperReports REST API Reference](https://community.jaspersoft.com/documentation)
-- [Oracle Database Security Guide](https://docs.oracle.com/en/database/)
 
 ### **Monitoring & Logging**
 Consider implementing:
-- Comprehensive error logging table
 - Usage statistics collection
 - Performance metrics monitoring
 - Alerting for failed report generations
@@ -429,6 +359,6 @@ Specializing in Oracle Database Architecture, APEX Development, and Enterprise I
 
 **License**: This solution is provided for enterprise use. Ensure compliance with your organization's security policies and licensing requirements for both Oracle and JasperReports software.
 
-**Version**: 2.0  
-**Last Updated**: December 2024  
-**Compatibility**: Oracle Database 19c+, APEX 20.1+, JasperReports Server 7.5+
+**Version**: 1.0.0  
+**Last Updated**: December 2025  
+**Compatibility**: Oracle Database 19c+, APEX 18.1+, JasperReports Server 7.5+
