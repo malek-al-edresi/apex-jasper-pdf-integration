@@ -1,3 +1,15 @@
+--================================================
+-- JasperReports Integration Script
+-- Created by:  Eng. Malek M. Aledresi
+-- Date:        2025-12-18
+-- Version:     1.0.0
+-- Description: This script creates tables, sequences, triggers, and a procedure
+--              to integrate JasperReports server with Oracle APEX applications.
+-- It includes error handling and sample data insertion.
+--================================================
+
+
+--================================================
 -- Professional Script for JasperReports Integration Tables and Procedure
 
 -- Drop existing objects with proper error handling
