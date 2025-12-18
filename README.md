@@ -21,13 +21,13 @@ This approach is production-ready and suitable for Autonomous Database (ADB) and
 - ✅ Error handling and diagnostics
 
 ## 🏗 Architecture
-                                        Oracle APEX  
+                                           Oracle APEX  
                                                 ↓  
                                         APEX_WEB_SERVICE  
                                                 ↓  
-                                    JasperReports REST API  
+                                      JasperReports REST API  
                                                 ↓    
-                                    PDF (BLOB) → Browser Download
+                                  PDF (BLOB) → Browser Download
 
 ## 🗄 Database Objects
 
