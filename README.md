@@ -21,13 +21,13 @@ This approach is production-ready and suitable for Autonomous Database (ADB) and
 - ✅ Error handling and diagnostics
 
 ## 🏗 Architecture
-Oracle APEX  
-↓  
-APEX_WEB_SERVICE  
-↓  
-JasperReports REST API  
-↓  
-PDF (BLOB) → Browser Download
+          Oracle APEX  
+                ↓  
+        APEX_WEB_SERVICE  
+                ↓  
+       JasperReports REST API  
+                ↓    
+    PDF (BLOB) → Browser Download
 
 ## 🗄 Database Objects
 
@@ -229,5 +229,5 @@ Oracle Software Engineer - OCP & OCA - Oracle APEX Developer Professional
 
 *Specialized in Oracle APEX, PL/SQL, Database Architecture, and Enterprise Integration Solutions*
 
-LinkedIn: [Malek_Al_Edresi](https://linkedin.com/in/Malek_Al_Edresi)  
+LinkedIn: [Malek_Al_Edresi](https://linkedin.com/in/malek-al-edresi)  
 GitHub: [malek-al-edresi](https://github.com/malek-al-edresi)
