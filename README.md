@@ -1,4 +1,4 @@
-# Oracle APEX - JasperReports PDF Integration
+# Oracle APEX – JasperReports PDF Integration
 
 ## 📋 Project Overview
 
@@ -346,6 +346,13 @@ Consider implementing:
 - Performance metrics monitoring
 - Alerting for failed report generations
 
+## ⚠️ Disclaimer
+
+> [!IMPORTANT]
+> This is an **unofficial community project** and is **not an official Oracle product**. It is provided as-is for educational and integration purposes. Oracle Corporation does not endorse, support, or maintain this project. Users are responsible for ensuring compliance with their organization's security policies and software licensing requirements.
+
+---
+
 ## 👤 Author & Support
 
 **Malek Mohammed Al-Edresi**  
@@ -357,8 +364,10 @@ Specializing in Oracle Database Architecture, APEX Development, and Enterprise I
 
 ---
 
-**License**: This solution is provided for enterprise use. Ensure compliance with your organization's security policies and licensing requirements for both Oracle and JasperReports software.
+## 📄 License
+
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for the full license text.
 
 **Version**: 1.0.0  
-**Last Updated**: December 2025  
+**Last Updated**: January 2026  
 **Compatibility**: Oracle Database 19c+, APEX 18.1+, JasperReports Server 7.5+
