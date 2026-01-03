@@ -1,10 +1,10 @@
 # Oracle APEX – JasperReports PDF Integration
 
-## 📋 Project Overview
+## Project Overview
 
 A production-ready integration solution that enables Oracle APEX applications to dynamically generate and download PDF reports from JasperReports Server via REST API. This implementation provides a secure, configurable bridge between Oracle Database environments (including Autonomous Database) and JasperReports Server.
 
-## ✨ Key Features
+## Key Features
 
 | Feature | Description |
 |---------|-------------|
@@ -17,7 +17,7 @@ A production-ready integration solution that enables Oracle APEX applications to
 | **Comprehensive Error Handling** | Detailed diagnostics and status reporting |
 | **Scalable Architecture** | Suitable for enterprise deployments |
 
-## 🏗 System Architecture
+## System Architecture
 
 ```mermaid
 graph TB
@@ -33,7 +33,7 @@ graph TB
     style Jasper fill:#ccf,stroke:#333
 ```
 
-## 📊 Database Schema
+## Database Schema
 
 ### **Report Settings Table** (`MANG_SYS_SEC_REPORT_SETTINGS`)
 Stores JasperReports server connection configurations.
@@ -70,7 +70,7 @@ CREATE TABLE MANG_SYS_SEC_REPORT_CONFIG (
 );
 ```
 
-## ⚙️ Core Implementation
+## Core Implementation
 
 ### **Main Procedure: `GET_REPORT`**
 
@@ -182,7 +182,7 @@ END GET_REPORT;
 /
 ```
 
-## 🚀 Usage Examples
+## Usage Examples
 
 ### **Basic Usage**
 ```sql
@@ -226,7 +226,7 @@ BEGIN
 END;
 ```
 
-## 🔐 Security Best Practices
+## Security Best Practices
 
 ### **Credential Management**
 1. **Secure Storage**: Consider using Oracle Wallet or DBMS_CRYPTO for password encryption
@@ -245,7 +245,7 @@ FROM MANG_SYS_SEC_REPORT_CONFIG
 WHERE is_active = 'Y';
 ```
 
-## 📈 Performance Optimization
+## Performance Optimization
 
 ### **Indexing Strategy**
 ```sql
@@ -255,7 +255,7 @@ CREATE INDEX idx_report_config_active ON MANG_SYS_SEC_REPORT_CONFIG(is_active);
 CREATE INDEX idx_report_settings_active ON MANG_SYS_SEC_REPORT_SETTINGS(is_active);
 ```
 
-## 🔧 Troubleshooting Guide
+## Troubleshooting Guide
 
 | Issue | Solution |
 |-------|----------|
@@ -284,7 +284,7 @@ WHERE c.settings_id = s.settings_id
   AND c.report_id = 1;
 ```
 
-## 📋 Deployment Checklist
+## Deployment Checklist
 
 ### **Pre-Deployment**
 - [ ] Verify Oracle APEX version compatibility (18.1+)
@@ -304,7 +304,7 @@ WHERE c.settings_id = s.settings_id
 3. Configure APEX application integration
 4. Document configuration for operational support
 
-## 🧪 Testing Strategy
+## Testing Strategy
 
 ```sql
 -- Test procedure with various scenarios
@@ -334,7 +334,7 @@ END;
 /
 ```
 
-## 📚 Additional Resources
+## Additional Resources
 
 ### **Related Documentation**
 - [Oracle APEX Web Service Guide](https://docs.oracle.com/database/apex-20.1/AEAPI/APEX_WEB_SERVICE.htm)
@@ -346,25 +346,25 @@ Consider implementing:
 - Performance metrics monitoring
 - Alerting for failed report generations
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 > [!IMPORTANT]
 > This is an **unofficial community project** and is **not an official Oracle product**. It is provided as-is for educational and integration purposes. Oracle Corporation does not endorse, support, or maintain this project. Users are responsible for ensuring compliance with their organization's security policies and software licensing requirements.
 
 ---
 
-## 👤 Author & Support
+## Author & Support
 
 **Malek Mohammed Al-Edresi**  
 Oracle Certified Professional | APEX Developer Specialist  
 Specializing in Oracle Database Architecture, APEX Development, and Enterprise Integration
 
-📧 Contact: [LinkedIn Profile](https://linkedin.com/in/malek-al-edresi)  
-🐙 GitHub: [malek-al-edresi](https://github.com/malek-al-edresi)
+Contact: [LinkedIn Profile](https://linkedin.com/in/malek-al-edresi)  
+GitHub: [malek-al-edresi](https://github.com/malek-al-edresi)
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for the full license text.
 
